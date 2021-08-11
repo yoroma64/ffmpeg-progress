@@ -14,7 +14,7 @@ Add the binary to your PATH.
 
 Now you can replace 'ffmpeg' commands with 'ffmpeg-progress'.
 
-# Options:
+# Options
 You migth want to pass '-y' or '-n' to avoid interactive dialogs which will not be printed.
 
 print help:
