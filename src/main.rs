@@ -1,4 +1,4 @@
-use regex::Regex;
+use regex::bytes::Regex;
 use std::env::args;
 use std::io::{stdout, BufRead, BufReader, ErrorKind, Write};
 use std::process::{exit, Command, Stdio};
@@ -6,19 +6,26 @@ use std::time::SystemTime;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-fn progress(line: &str, regex: &regex::Regex, total_sec: &mut u32) {
-    if let Some(result) = regex.captures(line) {
+fn progress(bytes: &[u8], regex: &Regex, total_sec: &mut u32) {
+    if let Some(result) = regex.captures(bytes) {
         let mut mult = 3600;
         for i in 1..4 {
-            *total_sec += mult * result[i].parse::<u32>().unwrap();
+            *total_sec += mult
+                * std::str::from_utf8(&result[i])
+                    .unwrap()
+                    .parse::<u32>()
+                    .unwrap();
             mult /= 60;
         }
     }
 }
 
-fn match_line(line: &str, regex: &regex::Regex, float: &mut f32) {
-    if let Some(result) = regex.captures(line) {
-        *float = result[1].parse::<f32>().unwrap();
+fn match_bytes(bytes: &[u8], regex: &Regex, float: &mut f32) {
+    if let Some(result) = regex.captures(bytes) {
+        *float = std::str::from_utf8(&result[1])
+            .unwrap()
+            .parse::<f32>()
+            .unwrap();
     }
 }
 
@@ -110,13 +117,13 @@ fn ffmpeg(arg: &[String]) {
 
     let err = BufReader::new(child.stderr.take().unwrap());
 
-    err.lines().for_each(|line| {
+    err.split(b'\r').for_each(|bytes| {
         if duration == 0 {
-            progress(line.as_ref().unwrap(), &duration_regex, &mut duration);
+            progress(bytes.as_ref().unwrap(), &duration_regex, &mut duration);
         }
 
         time = 0;
-        progress(line.as_ref().unwrap(), &time_regex, &mut time);
+        progress(bytes.as_ref().unwrap(), &time_regex, &mut time);
 
         if time != 0 {
             old_sys_time = sys_time;
@@ -125,8 +132,8 @@ fn ffmpeg(arg: &[String]) {
                 sys_time.duration_since(old_sys_time).unwrap().as_millis() as f32 / 1000.0;
 
             old_cur_size = cur_size;
-            match_line(line.as_ref().unwrap(), &cur_size_regex, &mut cur_size);
-            match_line(line.as_ref().unwrap(), &speed_regex, &mut speed);
+            match_bytes(bytes.as_ref().unwrap(), &cur_size_regex, &mut cur_size);
+            match_bytes(bytes.as_ref().unwrap(), &speed_regex, &mut speed);
             percent = time as f32 * 100.0 / duration as f32;
             size = 100.0 / percent * cur_size;
             bitrate = (cur_size - old_cur_size) / time_elapsed;
