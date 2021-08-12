@@ -74,7 +74,6 @@ fn ffmpeg(arg: &[String]) {
     let cur_size_regex = Regex::new(r"size=\s*(\d+)").unwrap();
 
     let mut output = format!("[{}] 0%", " ".repeat(10));
-
     print!("{}", output);
     stdout().flush().unwrap();
 
@@ -117,43 +116,56 @@ fn ffmpeg(arg: &[String]) {
 
     let err = BufReader::new(child.stderr.take().unwrap());
 
-    err.split(b'\r').for_each(|bytes| {
-        if duration == 0 {
-            progress(bytes.as_ref().unwrap(), &duration_regex, &mut duration);
-        }
-
-        time = 0;
-        progress(bytes.as_ref().unwrap(), &time_regex, &mut time);
-
-        if time != 0 {
-            old_sys_time = sys_time;
-            sys_time = SystemTime::now();
-            time_elapsed =
-                sys_time.duration_since(old_sys_time).unwrap().as_millis() as f32 / 1000.0;
-
-            old_cur_size = cur_size;
-            match_bytes(bytes.as_ref().unwrap(), &cur_size_regex, &mut cur_size);
-            match_bytes(bytes.as_ref().unwrap(), &speed_regex, &mut speed);
-            percent = time as f32 * 100.0 / duration as f32;
-            size = 100.0 / percent * cur_size;
-            bitrate = (cur_size - old_cur_size) / time_elapsed;
-
-            eta = (duration - time) as f32 / speed;
-            secs_to_time(eta, &mut min_sec, &mut eta_str);
-
-            human_readable(size, &mut size_str);
-            human_readable(bitrate, &mut bitrate_str);
-            human_readable(cur_size, &mut cur_size_str);
-
+    err.split(b']').for_each(|bytes| {
+        if std::str::from_utf8(bytes.as_ref().unwrap())
+            .unwrap()
+            .contains(&"already exists. Overwrite? [y/N")
+        {
             backspace(&output);
-            progress_bar(&mut output, percent, &mut mult);
-            output = format!(
-                "{0} {1:.1}%/{2} of ~{3} at {4}/s ETA {5}",
-                output, percent, cur_size_str, size_str, bitrate_str, eta_str
+            output = "".to_string();
+            print!(
+                "{}] ",
+                std::str::from_utf8(bytes.as_ref().unwrap()).unwrap().trim()
             );
-
-            print!("{}", output);
             stdout().flush().unwrap();
+        } else {
+            if duration == 0 {
+                progress(bytes.as_ref().unwrap(), &duration_regex, &mut duration);
+            }
+
+            time = 0;
+            progress(bytes.as_ref().unwrap(), &time_regex, &mut time);
+
+            if time != 0 {
+                old_sys_time = sys_time;
+                sys_time = SystemTime::now();
+                time_elapsed =
+                    sys_time.duration_since(old_sys_time).unwrap().as_millis() as f32 / 1000.0;
+
+                old_cur_size = cur_size;
+                match_bytes(bytes.as_ref().unwrap(), &cur_size_regex, &mut cur_size);
+                match_bytes(bytes.as_ref().unwrap(), &speed_regex, &mut speed);
+                percent = time as f32 * 100.0 / duration as f32;
+                size = 100.0 / percent * cur_size;
+                bitrate = (cur_size - old_cur_size) / time_elapsed;
+
+                eta = (duration - time) as f32 / speed;
+                secs_to_time(eta, &mut min_sec, &mut eta_str);
+
+                human_readable(size, &mut size_str);
+                human_readable(bitrate, &mut bitrate_str);
+                human_readable(cur_size, &mut cur_size_str);
+
+                backspace(&output);
+                progress_bar(&mut output, percent, &mut mult);
+                output = format!(
+                    "{0} {1:.1}%/{2} of ~{3} at {4}/s ETA {5}",
+                    output, percent, cur_size_str, size_str, bitrate_str, eta_str
+                );
+
+                print!("{}", output);
+                stdout().flush().unwrap();
+            }
         }
     });
 
@@ -191,17 +203,22 @@ fn main() {
                 println!("usage: {} [options]\noptions:\n-h, --help       show help\n-v, --version    print version\nAll other options are passed directly to ffmpeg.", arg[0]);
                 exit(0);
             } else if ["-v", "--version"].contains(&arg[1].as_str()) {
-                println!("{}", VERSION);
+                println!("v{}", VERSION);
                 exit(0);
             } else {
                 println!("Invalid arguments!");
                 exit(1);
             }
         } else {
-            ffmpeg(&arg[1..]);
+            let arg = ["-loglevel".to_string(), "level".to_string()]
+                .iter()
+                .chain(&arg[1..])
+                .cloned()
+                .collect::<Vec<String>>();
+            ffmpeg(&arg);
         }
     } else {
         println!("No arguments supplied!");
         exit(1);
-    };
+    }
 }
