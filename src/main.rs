@@ -73,10 +73,6 @@ fn ffmpeg(arg: &[String]) {
     let speed_regex = Regex::new(r"speed=(\d+\.\d+)").unwrap();
     let cur_size_regex = Regex::new(r"size=\s*(\d+)").unwrap();
 
-    let mut output = format!("[{}] 0%", " ".repeat(10));
-    print!("{}", output);
-    stdout().flush().unwrap();
-
     let mut duration = 0;
     let mut time = 0;
     let mut mult = 0;
@@ -113,6 +109,10 @@ fn ffmpeg(arg: &[String]) {
             }
         },
     };
+
+    let mut output = format!("[{}] 0%", " ".repeat(10));
+    print!("{}", output);
+    stdout().flush().unwrap();
 
     let err = BufReader::new(child.stderr.take().unwrap());
 
