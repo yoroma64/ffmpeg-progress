@@ -100,7 +100,7 @@ fn ffmpeg(arg: &[String]) {
     let mut ffmpeg = &mut Command::new("ffmpeg");
     ffmpeg = ffmpeg.args(arg);
 
-    let mut child = match ffmpeg.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+    let mut child = match ffmpeg.stderr(Stdio::piped()).spawn() {
         Ok(o) => o,
         Err(e) => match e.kind() {
             ErrorKind::NotFound => {
@@ -125,7 +125,11 @@ fn ffmpeg(arg: &[String]) {
             output = "".to_string();
             print!(
                 "{}] ",
-                std::str::from_utf8(bytes.as_ref().unwrap()).unwrap().trim()
+                std::str::from_utf8(bytes.as_ref().unwrap())
+                    .unwrap()
+                    .rsplit_once('\n')
+                    .unwrap()
+                    .1
             );
             stdout().flush().unwrap();
         } else {
