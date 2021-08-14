@@ -23,3 +23,10 @@ print version:
 ```terminal
 ffmpeg-progress -v
 ```
+set progress bar width:
+
+--bar-width
+
+show only progress bar:
+
+--no-stats
