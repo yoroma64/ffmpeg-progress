@@ -1,6 +1,6 @@
 use regex::bytes::Regex;
 use std::env::args;
-use std::io::{stdout, BufRead, BufReader, ErrorKind, Write};
+use std::io::{stdout, BufReader, ErrorKind, Read, Write};
 use std::process::{exit, Command, Stdio};
 use std::time::SystemTime;
 
@@ -64,7 +64,11 @@ fn backspace(string: &str) {
 
 fn progress_bar(output: &mut String, percent: f32, mult: &mut usize, bar_width: usize) {
     *mult = (percent * bar_width as f32 / 100.0) as usize;
-    *output = format!("[{0}{1}]", "#".repeat(*mult), ".".repeat(bar_width - *mult));
+    *output = format!(
+        "[{0}{1}] ",
+        "#".repeat(*mult),
+        ".".repeat(bar_width - *mult)
+    );
 }
 
 fn ffmpeg(arg: &[String], stats: bool, bar_width: usize) {
@@ -93,6 +97,7 @@ fn ffmpeg(arg: &[String], stats: bool, bar_width: usize) {
     let mut sys_time = start_time;
     let mut old_sys_time = start_time;
     let mut file_exists = false;
+    let mut bytearr = Vec::<u8>::new();
 
     let mut ffmpeg = &mut Command::new("ffmpeg");
     ffmpeg = ffmpeg.args(arg);
@@ -122,35 +127,21 @@ fn ffmpeg(arg: &[String], stats: bool, bar_width: usize) {
 
     let err = BufReader::new(child.stderr.take().unwrap());
 
-    err.split(b']').for_each(|bytes| {
-        if std::str::from_utf8(bytes.as_ref().unwrap())
-            .unwrap()
-            .contains(&"already exists. Overwrite? [y/N")
-        {
-            backspace(&output);
-            output = "".to_string();
-            file_exists = true;
-            print!(
-                "{}] ",
-                std::str::from_utf8(bytes.as_ref().unwrap())
-                    .unwrap()
-                    .rsplit_once('\n')
-                    .unwrap()
-                    .1
-            );
-            stdout().flush().unwrap();
-        } else {
-            if file_exists {
-                start_time = SystemTime::now();
-                file_exists = false;
-            }
+    err.bytes().for_each(|byte| {
+        if file_exists {
+            start_time = SystemTime::now();
+            file_exists = false;
+        }
 
+        bytearr.push(*byte.as_ref().unwrap());
+
+        if [b'\n', b'\r'].contains(&byte.unwrap()) {
             if duration == 0 {
-                progress(bytes.as_ref().unwrap(), &duration_regex, &mut duration);
+                progress(&bytearr, &duration_regex, &mut duration);
             }
 
             time = 0;
-            progress(bytes.as_ref().unwrap(), &time_regex, &mut time);
+            progress(&bytearr, &time_regex, &mut time);
 
             if time != 0 {
                 old_sys_time = sys_time;
@@ -159,8 +150,8 @@ fn ffmpeg(arg: &[String], stats: bool, bar_width: usize) {
                     sys_time.duration_since(old_sys_time).unwrap().as_millis() as f32 / 1000.0;
 
                 old_cur_size = cur_size;
-                match_bytes(bytes.as_ref().unwrap(), &cur_size_regex, &mut cur_size);
-                match_bytes(bytes.as_ref().unwrap(), &speed_regex, &mut speed);
+                match_bytes(&bytearr, &cur_size_regex, &mut cur_size);
+                match_bytes(&bytearr, &speed_regex, &mut speed);
                 percent = time as f32 * 100.0 / duration as f32;
                 size = 100.0 / percent * cur_size;
                 bitrate = (cur_size - old_cur_size) / time_elapsed;
@@ -175,20 +166,36 @@ fn ffmpeg(arg: &[String], stats: bool, bar_width: usize) {
                 backspace(&output);
                 if bar_width > 0 {
                     progress_bar(&mut output, percent, &mut mult, bar_width);
+                } else {
+                    output = "".to_string();
                 }
 
                 if stats {
                     output = format!(
-                        "{0} {1:.1}%/{2} of ~{3} at {4}/s ETA {5}",
+                        "{0}{1:.1}%/{2} of ~{3} at {4}/s ETA {5}",
                         output, percent, cur_size_str, size_str, bitrate_str, eta_str
                     );
                 } else {
-                    output = format!("{0} {1:.1}%", output, percent);
+                    output = format!("{0}{1:.1}%", output, percent);
                 }
 
                 print!("{}", output);
                 stdout().flush().unwrap();
             }
+
+            bytearr.clear();
+        } else if std::str::from_utf8(&bytearr)
+            .unwrap()
+            .contains(&"already exists. Overwrite? [y/N] ")
+        {
+            backspace(&output);
+            output = "".to_string();
+
+            file_exists = true;
+
+            print!("{}", std::str::from_utf8(&bytearr).unwrap());
+            stdout().flush().unwrap();
+            bytearr.clear();
         }
     });
 
@@ -226,11 +233,13 @@ fn ffmpeg(arg: &[String], stats: bool, bar_width: usize) {
 fn main() {
     let mut arg: Vec<String> = args().collect();
 
+    let help = format!("usage: {} [options]\noptions:\n-h, --help       show help\n-v, --version    print version\n--no-stats       show only progress bar\n--bar-width      set progress bar width\nAll other options are passed directly to ffmpeg.", arg[0]);
+
     if arg.len() > 1 {
         let invalid = "Invalid arguments!";
         if arg.len() == 2 {
             if ["-h", "--help"].contains(&arg[1].as_str()) {
-                println!("usage: {} [options]\noptions:\n-h, --help       show help\n-v, --version    print version\n--no-stats       show only progress bar\n--bar-width      set progress bar width\nAll other options are passed directly to ffmpeg.", arg[0]);
+                println!("{}", help);
                 exit(0);
             } else if ["-v", "--version"].contains(&arg[1].as_str()) {
                 println!("v{}", VERSION);
@@ -242,18 +251,18 @@ fn main() {
         } else {
             let mut stats = true;
             let mut bar_width = 20_usize;
-            let mut indexes = Vec::<usize>::new();
+            let mut indices = Vec::<usize>::new();
 
-            for (i, a) in arg.iter().enumerate() {
+            for (i, a) in arg[1..].iter().enumerate() {
                 if a == "--no-stats" {
                     stats = false;
-                    indexes.push(i);
+                    indices.push(i + 1);
                 }
 
                 if a == "--bar-width" {
-                    if i + 1 < arg.len() {
-                        bar_width = if let Ok(w) = arg[i + 1].parse::<usize>() {
-                            indexes.extend([i, i + 1]);
+                    if i + 2 < arg.len() {
+                        bar_width = if let Ok(w) = arg[i + 2].parse::<usize>() {
+                            indices.extend([i + 1, i + 2]);
                             w
                         } else {
                             println!("{}", invalid);
@@ -264,19 +273,14 @@ fn main() {
                     }
                 }
             }
-            for (i, index) in indexes.iter().enumerate() {
+            for (i, index) in indices.iter().enumerate() {
                 arg.remove(index - i);
             }
 
-            let arg = ["-loglevel".to_string(), "level".to_string()]
-                .iter()
-                .chain(&arg[1..])
-                .cloned()
-                .collect::<Vec<String>>();
-            ffmpeg(&arg, stats, bar_width);
+            ffmpeg(&arg[1..], stats, bar_width);
         }
     } else {
-        println!("No arguments supplied!");
+        println!("No arguments supplied!\n{}", help);
         exit(1);
     }
 }
