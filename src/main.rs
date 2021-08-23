@@ -233,7 +233,16 @@ fn ffmpeg(arg: &[String], stats: bool, bar_width: usize) {
 fn main() {
     let mut arg: Vec<String> = args().collect();
 
-    let help = format!("usage: {} [options]\noptions:\n-h, --help       show help\n-v, --version    print version\n--no-stats       show only progress bar\n--bar-width      set progress bar width\nAll other options are passed directly to ffmpeg.", arg[0]);
+    let help = format!(
+        "usage: {} [options]\r\n\
+                       options:\r\n\
+                       -h, --help             show help\r\n\
+                       -v, --version          print version\r\n\
+                       --no-stats             show only progress bar\r\n\
+                       --bar-width [width]    set progress bar width\r\n\
+                       All other options are passed directly to ffmpeg.",
+        arg[0]
+    );
 
     if arg.len() > 1 {
         let invalid = "Invalid arguments!";
@@ -280,7 +289,7 @@ fn main() {
             ffmpeg(&arg[1..], stats, bar_width);
         }
     } else {
-        println!("No arguments supplied!\n{}", help);
+        println!("No arguments supplied!\r\n{}", help);
         exit(1);
     }
 }
